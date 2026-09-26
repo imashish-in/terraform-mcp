@@ -97,6 +97,21 @@ def inspect_resource_cost_efficiency(
             ExtendedStatistics=["p99"],
         )
         datapoints = stats_resp.get("Datapoints", [])
+        if not datapoints:
+            try:
+                stats_resp = cw_client.get_metric_statistics(
+                    Namespace="Custom/EC2" if namespace == "AWS/EC2" else "Custom/ECS",
+                    MetricName="CPUUtilization",
+                    Dimensions=[{"Name": dimension_name, "Value": resource_id}],
+                    StartTime=start_time,
+                    EndTime=end_time,
+                    Period=3600,
+                    Statistics=["Average", "Maximum"],
+                    ExtendedStatistics=["p99"],
+                )
+                datapoints = stats_resp.get("Datapoints", [])
+            except Exception:
+                pass
         if datapoints:
             for dp in datapoints:
                 val = dp.get("ExtendedStatistics", {}).get("p99")
