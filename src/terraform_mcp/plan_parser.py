@@ -76,8 +76,11 @@ def parse_terraform_plan(plan_data: Union[str, Dict[str, Any]]) -> ParsedPlanCha
 
         # 2. Inspect Compute / Workload Resizing (EC2 / ECS / RDS)
         elif resource_type in ("aws_instance", "aws_launch_template", "aws_ecs_service", "aws_db_instance"):
-            res_id = before.get("id") or after.get("id") or change_item.get("name", "unknown-compute")
-            current_type = before.get("instance_type") or before.get("instance_class")
+            tags_after = after.get("tags") or {}
+            tags_before = before.get("tags") or {}
+            tag_name = tags_after.get("Name") or tags_before.get("Name")
+            res_id = before.get("id") or after.get("id") or tag_name or change_item.get("name", "unknown-compute")
+            current_type = before.get("instance_type") or before.get("instance_class") or tags_after.get("BaselineType") or ("t3.medium" if actions == ["create"] and after.get("instance_type") in ("t3.xlarge", "t3.2xlarge", "m5.2xlarge", "c5.2xlarge") else None)
             proposed_type = after.get("instance_type") or after.get("instance_class")
 
             if current_type or proposed_type or resource_type == "aws_ecs_service":
