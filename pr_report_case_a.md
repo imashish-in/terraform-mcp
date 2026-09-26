@@ -1,5 +1,5 @@
 ### :white_check_mark: IaC Pre-Merge Gate: APPROVED
-**Evaluation Latency:** `447.33 ms` | **Protocol:** MCP JSON-RPC Mesh
+**Evaluation Latency:** `569.64 ms` | **Protocol:** MCP JSON-RPC Mesh
 
 #### 1. Reliability & Dynamic Topology Blast Radius
 - :white_check_mark: **Resource:** `sg-0a1b2c3d4e5f60718` — **Severity:** `SAFE`

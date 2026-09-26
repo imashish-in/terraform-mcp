@@ -1,0 +1,59 @@
+{
+  "format_version": "1.2",
+  "terraform_version": "1.9.5",
+  "resource_changes": [
+    {
+      "address": "aws_security_group.order_service_sg",
+      "mode": "managed",
+      "type": "aws_security_group",
+      "name": "order_service_sg",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "change": {
+        "actions": [
+          "update"
+        ],
+        "before": {
+          "id": "sg-8f62638c0c68c05af",
+          "name": "order-service-sg",
+          "description": "Security group for Order Processing Microservice",
+          "ingress": [
+            {
+              "cidr_blocks": [
+                "10.0.0.0/16"
+              ],
+              "description": "Inbound microservice traffic",
+              "from_port": 8080,
+              "to_port": 8080,
+              "protocol": "tcp"
+            },
+            {
+              "cidr_blocks": [
+                "10.0.0.0/16"
+              ],
+              "description": "Health check probe",
+              "from_port": 443,
+              "to_port": 443,
+              "protocol": "tcp"
+            }
+          ]
+        },
+        "after": {
+          "id": "sg-8f62638c0c68c05af",
+          "name": "order-service-sg",
+          "description": "Security group for Order Processing Microservice",
+          "ingress": [
+            {
+              "cidr_blocks": [
+                "10.0.0.0/16"
+              ],
+              "description": "Health check probe",
+              "from_port": 443,
+              "to_port": 443,
+              "protocol": "tcp"
+            }
+          ]
+        }
+      }
+    }
+  ]
+}
