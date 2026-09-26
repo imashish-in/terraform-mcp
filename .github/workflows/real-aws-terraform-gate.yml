@@ -8,10 +8,13 @@ on:
       - '**/*.tf'
   push:
     branches: [ main ]
+    paths:
+      - 'terraform/**'
+      - '**/*.tf'
   workflow_dispatch:
     inputs:
       auto_apply:
-        description: 'Run terraform apply if plan is approved'
+        description: 'Run terraform apply to real AWS'
         required: false
         type: boolean
         default: true
@@ -24,7 +27,7 @@ permissions:
 
 jobs:
   real-aws-gate-and-deploy:
-    name: Terraform Plan, MCP Gate & Deploy
+    name: Real AWS Gate & Auto-Deploy
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Code
@@ -69,7 +72,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install -e ".[dev]"
 
-      # 4. Generate Real Terraform Plan JSON
+      # 4. Generate Real Terraform Plan JSON (against S3 backend)
       - name: Terraform Init & Plan
         id: tf_plan
         run: |
@@ -127,7 +130,7 @@ jobs:
             cat pr_report.md >> $GITHUB_STEP_SUMMARY
           fi
 
-      # 8. Check Gate Verdict
+      # 8. Check Gate Verdict (Block if Critical Blast Radius or Waste)
       - name: Enforce Gate Verdict
         id: gate_verdict
         if: steps.tf_plan.outputs.has_plan == 'true'
@@ -142,7 +145,7 @@ jobs:
               sys.exit(1)
           "
 
-      # 9. Automatic Terraform Apply (on Main branch or Workflow Dispatch)
+      # 9. Automatic Terraform Apply on Merge to Main
       - name: Terraform Apply to Real AWS
         if: (github.ref == 'refs/heads/main' && github.event_name == 'push') || (github.event_name == 'workflow_dispatch' && inputs.auto_apply == true)
         run: |
