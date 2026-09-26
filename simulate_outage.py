@@ -16,7 +16,13 @@ def main():
     region_name = "us-east-1"
     
     print(f"[*] Connecting to Floci emulator at {endpoint_url}...")
-    ec2 = boto3.client("ec2", endpoint_url=endpoint_url, region_name=region_name)
+    ec2 = boto3.client(
+        "ec2",
+        endpoint_url=endpoint_url,
+        region_name=region_name,
+        aws_access_key_id="test",
+        aws_secret_access_key="test",
+    )
 
     # 1. Create VPC & Subnet
     print("[1/3] Creating simulated VPC & Subnet in Floci...")
