@@ -50,7 +50,7 @@ resource "aws_subnet" "production_subnet_b" {
   }
 }
 
-# 2. Security Group for Order Processing Microservice (Maintained)
+# 2. Security Group for Order Processing Microservice
 resource "aws_security_group" "order_service_sg" {
   name        = "order-service-sg"
   description = "Security group for Order Processing Microservice"
@@ -86,7 +86,7 @@ resource "aws_security_group" "order_service_sg" {
   }
 }
 
-# 3. Security Group for Analytics & Telemetry Service (New Microservice)
+# 3. Security Group for Analytics Service
 resource "aws_security_group" "analytics_service_sg" {
   name        = "analytics-service-sg"
   description = "Security group for Analytics and Telemetry Microservice"
@@ -122,15 +122,38 @@ resource "aws_security_group" "analytics_service_sg" {
   }
 }
 
-# 4. Compute Worker Instance (FinOps Waste Mutation)
-# Upscaled to t3.xlarge from baseline t3.medium despite idle P99 CPU (12.4%)
-resource "aws_instance" "order_worker" {
-  ami           = "ami-0c55b159cbfafe1f0"
-  instance_type = "t3.xlarge"
-  subnet_id     = aws_subnet.production_subnet_a.id
+# 4. Security Group for Payment Gateway Service (New Service)
+resource "aws_security_group" "payment_service_sg" {
+  name        = "payment-service-sg"
+  description = "Security group for Payment Processing Gateway"
+  vpc_id      = aws_vpc.production_vpc.id
+
+  ingress {
+    description = "Payment processing secure endpoint"
+    from_port   = 8443
+    to_port     = 8443
+    protocol    = "tcp"
+    cidr_blocks = ["10.0.0.0/16"]
+  }
+
+  ingress {
+    description = "HTTPS health checks"
+    from_port   = 443
+    to_port     = 443
+    protocol    = "tcp"
+    cidr_blocks = ["10.0.0.0/16"]
+  }
+
+  egress {
+    description = "All outbound traffic"
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
 
   tags = {
-    Name        = "i-order-worker-01"
+    Name        = "payment-service-sg"
     Environment = "production"
   }
 }
