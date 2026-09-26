@@ -1,0 +1,77 @@
+name: Real AWS Terraform Destroy Pipeline
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirmation:
+        description: 'Type "DESTROY" to confirm teardown of all managed AWS infrastructure'
+        required: true
+        default: 'DESTROY'
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  destroy-aws-infra:
+    name: Terraform Destroy AWS Infrastructure
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      # Safety Check
+      - name: Verify Confirmation
+        run: |
+          if [ "${{ github.event.inputs.confirmation }}" != "DESTROY" ]; then
+            echo "::error::Destruction aborted! You must type 'DESTROY' to execute teardown."
+            exit 1
+          fi
+
+      # 1. Authenticate with Real AWS
+      - name: Configure AWS Credentials (OIDC Role)
+        if: env.AWS_ROLE_ARN != ''
+        uses: aws-actions/configure-aws-credentials@v4
+        env:
+          AWS_ROLE_ARN: ${{ secrets.AWS_ROLE_ARN }}
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION || 'us-east-1' }}
+
+      - name: Configure AWS Credentials (Static Keys)
+        if: env.AWS_ROLE_ARN == '' && env.AWS_ACCESS_KEY_ID != ''
+        uses: aws-actions/configure-aws-credentials@v4
+        env:
+          AWS_ROLE_ARN: ${{ secrets.AWS_ROLE_ARN }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ vars.AWS_REGION || 'us-east-1' }}
+
+      # 2. Setup Terraform CLI
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_wrapper: false
+
+      # 3. Execute Terraform Destroy
+      - name: Terraform Init & Destroy
+        run: |
+          TF_DIR="terraform"
+          if [ ! -d "$TF_DIR" ]; then
+            TF_DIR="."
+          fi
+          
+          echo "Initializing Terraform backend..."
+          terraform -chdir=$TF_DIR init -input=false
+          
+          echo "🔥 Executing Terraform Destroy on Real AWS..."
+          terraform -chdir=$TF_DIR destroy -auto-approve -input=false
+
+      # 4. Post Summary
+      - name: Post Teardown Summary
+        if: always()
+        run: |
+          echo "### 🗑️ AWS Infrastructure Teardown Complete" >> $GITHUB_STEP_SUMMARY
+          echo "All managed EC2, VPC, Subnets, and Security Groups have been destroyed." >> $GITHUB_STEP_SUMMARY
