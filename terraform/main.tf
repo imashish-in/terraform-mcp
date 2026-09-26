@@ -157,3 +157,31 @@ resource "aws_security_group" "payment_service_sg" {
     Environment = "production"
   }
 }
+
+# 5. Dynamic Amazon Linux 2023 AMI Data Source
+data "aws_ami" "amazon_linux_2023" {
+  most_recent = true
+  owners      = ["amazon"]
+
+  filter {
+    name   = "name"
+    values = ["al2023-ami-2023.*-x86_64"]
+  }
+
+  filter {
+    name   = "virtualization-type"
+    values = ["hvm"]
+  }
+}
+
+# 6. Baseline EC2 Worker Instance (Small initial size)
+resource "aws_instance" "order_worker" {
+  ami           = data.aws_ami.amazon_linux_2023.id
+  instance_type = "t3.micro"
+  subnet_id     = aws_subnet.production_subnet_a.id
+
+  tags = {
+    Name        = "order-worker-01"
+    Environment = "production"
+  }
+}
