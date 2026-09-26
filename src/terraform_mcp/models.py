@@ -81,18 +81,36 @@ class RouteChange(BaseModel):
     has_vpc_endpoint: bool = True
 
 
+class ResourceMutationLedgerItem(BaseModel):
+    address: str = Field(..., description="Terraform resource address (e.g. aws_instance.order_worker)")
+    resource_type: str = Field(..., description="Resource type (e.g. aws_instance, aws_security_group)")
+    action: str = Field(..., description="Action: CREATE, UPDATE, DESTROY, or REPLACE")
+    action_icon: str = Field("🔄", description="Display icon for action")
+    details: str = Field("", description="Key attribute changes or configuration details")
+
+
+class PlanMutationSummary(BaseModel):
+    to_add: int = 0
+    to_change: int = 0
+    to_destroy: int = 0
+    to_replace: int = 0
+    items: List[ResourceMutationLedgerItem] = Field(default_factory=list)
+
+
 class ParsedPlanChanges(BaseModel):
     format_version: Optional[str] = None
     terraform_version: Optional[str] = None
     security_group_changes: List[SecurityGroupChange] = Field(default_factory=list)
     compute_resizes: List[ComputeResizeChange] = Field(default_factory=list)
     route_changes: List[RouteChange] = Field(default_factory=list)
+    mutation_summary: PlanMutationSummary = Field(default_factory=PlanMutationSummary)
     total_resources_modified: int = 0
 
 
 class PlanEvaluationReport(BaseModel):
     overall_verdict: GateVerdict
     evaluation_duration_ms: float
+    mutation_summary: Optional[PlanMutationSummary] = None
     topology_results: List[SecurityGroupBlastRadiusResult] = Field(default_factory=list)
     finops_results: List[FinOpsCostEfficiencyResult] = Field(default_factory=list)
     summary_markdown: str = ""

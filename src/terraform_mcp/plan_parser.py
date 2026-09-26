@@ -10,13 +10,16 @@ from terraform_mcp.models import (
     SecurityGroupChange,
     ComputeResizeChange,
     RouteChange,
+    ResourceMutationLedgerItem,
+    PlanMutationSummary,
 )
 
 
 def parse_terraform_plan(plan_data: Union[str, Dict[str, Any]]) -> ParsedPlanChanges:
     """
     Parses a Terraform Plan JSON dictionary or JSON string.
-    Extracts security group mutations, compute resizes, and network route updates.
+    Extracts security group mutations, compute resizes, network route updates,
+    and a complete state mutation ledger.
     """
     if isinstance(plan_data, str):
         data = json.loads(plan_data)
@@ -29,6 +32,12 @@ def parse_terraform_plan(plan_data: Union[str, Dict[str, Any]]) -> ParsedPlanCha
     sg_changes: List[SecurityGroupChange] = []
     compute_resizes: List[ComputeResizeChange] = []
     route_changes: List[RouteChange] = []
+    ledger_items: List[ResourceMutationLedgerItem] = []
+
+    to_add = 0
+    to_change = 0
+    to_destroy = 0
+    to_replace = 0
 
     resource_changes = data.get("resource_changes", [])
 
@@ -43,6 +52,48 @@ def parse_terraform_plan(plan_data: Union[str, Dict[str, Any]]) -> ParsedPlanCha
 
         before = change.get("before") or {}
         after = change.get("after") or {}
+
+        # Track in Speculative Mutation Ledger
+        action_str = "UPDATE"
+        icon = "🔄"
+        if actions == ["create"]:
+            action_str = "CREATE"
+            icon = "➕"
+            to_add += 1
+        elif actions == ["delete"]:
+            action_str = "DELETE"
+            icon = "🗑️"
+            to_destroy += 1
+        elif "delete" in actions and "create" in actions:
+            action_str = "REPLACE"
+            icon = "⚠️"
+            to_replace += 1
+        elif actions == ["update"]:
+            action_str = "UPDATE"
+            icon = "🔄"
+            to_change += 1
+
+        details = ""
+        if resource_type in ("aws_instance", "aws_launch_template"):
+            b_type = before.get("instance_type")
+            a_type = after.get("instance_type")
+            details = f"type: {b_type} -> {a_type}" if (b_type and a_type and b_type != a_type) else f"type: {a_type or b_type}"
+        elif resource_type == "aws_subnet":
+            details = f"cidr: {after.get('cidr_block') or before.get('cidr_block')} ({after.get('availability_zone') or before.get('availability_zone')})"
+        elif resource_type == "aws_vpc":
+            details = f"cidr: {after.get('cidr_block') or before.get('cidr_block')}"
+        elif resource_type in ("aws_security_group", "aws_security_group_rule"):
+            details = f"group: {change_item.get('name') or address}"
+
+        ledger_items.append(
+            ResourceMutationLedgerItem(
+                address=address,
+                resource_type=resource_type,
+                action=action_str,
+                action_icon=icon,
+                details=details,
+            )
+        )
 
         # 1. Inspect Security Groups & Security Group Rules
         if resource_type in ("aws_security_group", "aws_security_group_rule"):
@@ -122,11 +173,20 @@ def parse_terraform_plan(plan_data: Union[str, Dict[str, Any]]) -> ParsedPlanCha
                 )
             )
 
+    mutation_summary = PlanMutationSummary(
+        to_add=to_add,
+        to_change=to_change,
+        to_destroy=to_destroy,
+        to_replace=to_replace,
+        items=ledger_items,
+    )
+
     return ParsedPlanChanges(
         format_version=format_version,
         terraform_version=terraform_version,
         security_group_changes=sg_changes,
         compute_resizes=compute_resizes,
         route_changes=route_changes,
-        total_resources_modified=len(sg_changes) + len(compute_resizes) + len(route_changes),
+        mutation_summary=mutation_summary,
+        total_resources_modified=len(ledger_items),
     )

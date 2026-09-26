@@ -65,12 +65,44 @@ def evaluate_cmd(plan, region, endpoint_url, markdown_out, json_out, fail_on_blo
     panel = Panel(
         f"[bold]Verdict:[/bold] [{verdict_style}]{report.overall_verdict.value}[/{verdict_style}]\n"
         f"[bold]Evaluation Latency:[/bold] {report.evaluation_duration_ms:.2f} ms\n"
+        f"[bold]Plan Mutations:[/bold] +{report.mutation_summary.to_add} to add, ~{report.mutation_summary.to_change} to change, -{report.mutation_summary.to_destroy} to destroy, ⚠️ {report.mutation_summary.to_replace} to replace\n"
         f"[bold]Topology Checks:[/bold] {len(report.topology_results)} resource(s)\n"
         f"[bold]FinOps Checks:[/bold] {len(report.finops_results)} resource(s)",
         title="[bold cyan]Terraform MCP Pre-Merge Gate Report[/bold cyan]",
         border_style="cyan",
     )
     console.print(panel)
+
+    # Speculative State Mutation Ledger Table
+    if report.mutation_summary and report.mutation_summary.items:
+        mut_table = Table(
+            title=f"Speculative State Mutation Ledger (+{report.mutation_summary.to_add} ~{report.mutation_summary.to_change} -{report.mutation_summary.to_destroy} ⚠️ {report.mutation_summary.to_replace})",
+            show_header=True,
+            header_style="bold blue",
+        )
+        mut_table.add_column("Action", style="bold", justify="center", width=12)
+        mut_table.add_column("Resource Address", style="cyan")
+        mut_table.add_column("Type", style="dim")
+        mut_table.add_column("Mutation Details")
+
+        action_styles = {
+            "create": ("[bold green]+ create[/bold green]"),
+            "update": ("[bold yellow]~ update[/bold yellow]"),
+            "delete": ("[bold red]- delete[/bold red]"),
+            "replace": ("[bold magenta]⚠️ replace[/bold magenta]"),
+            "read": ("[dim]read[/dim]"),
+            "no-op": ("[dim]no-op[/dim]"),
+        }
+
+        for item in report.mutation_summary.items:
+            action_badge = action_styles.get(item.action, item.action)
+            mut_table.add_row(
+                action_badge,
+                item.address,
+                item.resource_type,
+                item.details or "-",
+            )
+        console.print(mut_table)
 
     # Topology Findings Table
     if report.topology_results:
