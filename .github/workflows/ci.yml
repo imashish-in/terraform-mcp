@@ -1,16 +1,21 @@
-name: CI & Terraform MCP Verification Gate
+name: Python SDK Unit & Hermetic Tests
 
 on:
+  pull_request:
+    paths:
+      - 'src/**'
+      - 'tests/**'
+      - 'pyproject.toml'
   push:
     branches: [ main ]
-  pull_request:
-    branches: [ main ]
+    paths:
+      - 'src/**'
+      - 'tests/**'
+      - 'pyproject.toml'
   workflow_dispatch:
 
 permissions:
   contents: read
-  pull-requests: write
-  issues: write
 
 jobs:
   test:
@@ -39,87 +44,3 @@ jobs:
       - name: Run Test Suite & Latency Benchmarks
         run: |
           pytest -v -s --durations=10
-
-  terraform-mcp-gate:
-    name: State-Aware MCP Pre-Merge Gate
-    runs-on: ubuntu-latest
-    needs: test
-    env:
-      AWS_ACCESS_KEY_ID: test
-      AWS_SECRET_ACCESS_KEY: test
-      AWS_DEFAULT_REGION: us-east-1
-      AWS_ENDPOINT_URL: http://localhost:4566
-    steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
-
-      - name: Set up Python 3.12
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-          cache: "pip"
-
-      - name: Install Terraform MCP
-        run: |
-          python -m pip install --upgrade pip
-          pip install -e ".[dev]"
-
-      # Step 1: Start Cloud Emulator (Floci) in CI Runner
-      - name: Start Floci Cloud Infrastructure Emulator
-        run: |
-          docker run -d --name floci -p 4566:4566 floci/floci:latest
-          sleep 3
-
-      # Step 2: Simulate Active Production State in Floci (3 live ECS microservice containers)
-      - name: Provision Live Production State in Floci
-        run: |
-          python simulate_outage.py
-
-      # Step 3: Run the State-Aware MCP Pre-Merge Gate against live plan
-      - name: Execute State-Aware MCP Gate
-        id: gate_eval
-        continue-on-error: true
-        run: |
-          terraform-mcp evaluate \
-            --plan live_plan_case_a.json \
-            --endpoint-url http://localhost:4566 \
-            --markdown-out pr_report.md \
-            --json-out eval_report.json
-
-      # Step 4: Post Job Summary
-      - name: Post Gate Summary to Job Summary
-        if: always()
-        run: |
-          if [ -f pr_report.md ]; then
-            cat pr_report.md >> $GITHUB_STEP_SUMMARY
-          fi
-
-      # Step 5: Automatically Post PR Review Comment
-      - name: Comment PR Review on GitHub
-        if: github.event_name == 'pull_request' && always()
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const fs = require('fs');
-            if (fs.existsSync('pr_report.md')) {
-              const body = fs.readFileSync('pr_report.md', 'utf8');
-              github.rest.issues.createComment({
-                issue_number: context.issue.number,
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                body: body
-              });
-            }
-
-      # Step 6: Fail the CI check if the gate returned a BLOCK verdict
-      - name: Enforce Gate Verdict
-        run: |
-          python -c "
-          import json, sys
-          data = json.load(open('eval_report.json'))
-          verdict = data.get('overall_verdict')
-          print(f'Final Gate Verdict: {verdict}')
-          if verdict in ('BLOCK_PR_CRITICAL_BLAST_RADIUS', 'BLOCK_PR_FINOPS_WASTE'):
-              print('::error::Pull Request BLOCKED by State-Aware MCP Mesh!')
-              sys.exit(1)
-          "

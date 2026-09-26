@@ -1,0 +1,95 @@
+name: Floci Local Emulator Verification & Deployment Pipeline
+
+on:
+  pull_request:
+    branches: [ floci, 'simulation/**' ]
+  push:
+    branches: [ floci, 'simulation/**' ]
+  workflow_dispatch:
+    inputs:
+      auto_apply:
+        description: 'Run terraform apply to Floci emulator'
+        required: false
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+
+jobs:
+  floci-gate-and-deploy:
+    name: Floci Emulator Gate & Auto-Deploy
+    runs-on: ubuntu-latest
+    env:
+      AWS_ACCESS_KEY_ID: test
+      AWS_SECRET_ACCESS_KEY: test
+      AWS_DEFAULT_REGION: us-east-1
+      AWS_ENDPOINT_URL: http://localhost:4566
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Install Terraform MCP
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      # Step 1: Start Floci Container in CI Runner
+      - name: Start Floci Cloud Infrastructure Emulator
+        run: |
+          docker run -d --name floci -p 4566:4566 floci/floci:latest
+          sleep 4
+
+      # Step 2: Simulate Active Production State in Floci
+      - name: Provision Simulated Topology in Floci
+        run: |
+          python simulate_outage.py
+
+      # Step 3: Run the State-Aware MCP Pre-Merge Gate
+      - name: Execute State-Aware MCP Gate
+        id: gate_eval
+        continue-on-error: true
+        run: |
+          terraform-mcp evaluate \
+            --plan live_plan_case_a.json \
+            --endpoint-url http://localhost:4566 \
+            --markdown-out pr_report.md \
+            --json-out eval_report.json
+
+      # Step 4: Post Gate Summary to PR Comment (on PRs)
+      - name: Comment PR Review on GitHub
+        if: github.event_name == 'pull_request' && always()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            if (fs.existsSync('pr_report.md')) {
+              const body = fs.readFileSync('pr_report.md', 'utf8');
+              github.rest.issues.createComment({
+                issue_number: context.issue.number,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                body: body
+              });
+            }
+
+      # Step 5: Enforce Gate Verdict
+      - name: Enforce Gate Verdict
+        run: |
+          python -c "
+          import json, sys
+          data = json.load(open('eval_report.json'))
+          verdict = data.get('overall_verdict')
+          print(f'Final Gate Verdict: {verdict}')
+          if verdict in ('BLOCK_PR_CRITICAL_BLAST_RADIUS', 'BLOCK_PR_FINOPS_WASTE'):
+              print('::error::Pull Request BLOCKED by State-Aware MCP Mesh in Floci!')
+              sys.exit(1)
+          "
