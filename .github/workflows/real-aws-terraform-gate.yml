@@ -1,4 +1,4 @@
-name: Real AWS Terraform Verification Gate
+name: Real AWS Terraform Verification & Deployment Pipeline
 
 on:
   pull_request:
@@ -6,7 +6,18 @@ on:
     paths:
       - 'terraform/**'
       - '**/*.tf'
+  push:
+    branches: [ main ]
+    paths:
+      - 'terraform/**'
+      - '**/*.tf'
   workflow_dispatch:
+    inputs:
+      auto_apply:
+        description: 'Run terraform apply if plan is approved'
+        required: false
+        type: boolean
+        default: true
 
 permissions:
   id-token: write   # Required for AWS OIDC authentication
@@ -15,8 +26,8 @@ permissions:
   issues: write
 
 jobs:
-  real-aws-gate:
-    name: Terraform Plan & Real AWS State Verification Gate
+  real-aws-gate-and-deploy:
+    name: Terraform Plan, MCP Gate & Deploy
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Code
@@ -61,7 +72,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install -e ".[dev]"
 
-      # 4. Generate Real Terraform Plan JSON (if terraform directory exists)
+      # 4. Generate Real Terraform Plan JSON
       - name: Terraform Init & Plan
         id: tf_plan
         run: |
@@ -76,8 +87,9 @@ jobs:
             terraform -chdir=$TF_DIR plan -out=tfplan.binary -input=false
             terraform -chdir=$TF_DIR show -json tfplan.binary > tfplan.json
             echo "has_plan=true" >> $GITHUB_OUTPUT
+            echo "tf_dir=$TF_DIR" >> $GITHUB_OUTPUT
           else
-            echo "No .tf files found. Skipping real plan generation."
+            echo "No .tf files found. Skipping plan."
             echo "has_plan=false" >> $GITHUB_OUTPUT
           fi
 
@@ -93,9 +105,9 @@ jobs:
             --markdown-out pr_report.md \
             --json-out eval_report.json
 
-      # 6. Post Real-Time Audit Summary to GitHub PR Comment
+      # 6. Post Real-Time Audit Summary to GitHub PR Comment (on PRs)
       - name: Post PR Comment
-        if: steps.tf_plan.outputs.has_plan == 'true' && always()
+        if: github.event_name == 'pull_request' && steps.tf_plan.outputs.has_plan == 'true' && always()
         uses: actions/github-script@v7
         with:
           script: |
@@ -110,8 +122,17 @@ jobs:
               });
             }
 
-      # 7. Fail CI / Block Merge if Critical Blast-Radius or FinOps Waste is Detected
+      # 7. Post Summary to GitHub Job Summary
+      - name: Post Job Summary
+        if: always()
+        run: |
+          if [ -f pr_report.md ]; then
+            cat pr_report.md >> $GITHUB_STEP_SUMMARY
+          fi
+
+      # 8. Check Gate Verdict
       - name: Enforce Gate Verdict
+        id: gate_verdict
         if: steps.tf_plan.outputs.has_plan == 'true'
         run: |
           python -c "
@@ -120,6 +141,14 @@ jobs:
           verdict = data.get('overall_verdict')
           print(f'Final Gate Verdict: {verdict}')
           if verdict in ('BLOCK_PR_CRITICAL_BLAST_RADIUS', 'BLOCK_PR_FINOPS_WASTE'):
-              print('::error::Pull Request BLOCKED by Live AWS State Inspection!')
+              print('::error::Pull Request / Deploy BLOCKED by Live AWS State Inspection!')
               sys.exit(1)
           "
+
+      # 9. Automatic Terraform Apply (on Main branch or Workflow Dispatch)
+      - name: Terraform Apply to Real AWS
+        if: (github.ref == 'refs/heads/main' && github.event_name == 'push') || (github.event_name == 'workflow_dispatch' && inputs.auto_apply == true)
+        run: |
+          TF_DIR="${{ steps.tf_plan.outputs.tf_dir }}"
+          echo "🚀 Deploying approved Terraform infrastructure to Real AWS in $TF_DIR..."
+          terraform -chdir=$TF_DIR apply -auto-approve tfplan.binary
