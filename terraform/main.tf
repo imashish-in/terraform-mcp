@@ -46,14 +46,7 @@ resource "aws_security_group" "order_service_sg" {
   description = "Security group for Order Processing Microservice"
   vpc_id      = aws_vpc.production_vpc.id
 
-  # Inbound port for order processing API service
-  ingress {
-    description = "Order processing REST API"
-    from_port   = 8080
-    to_port     = 8080
-    protocol    = "tcp"
-    cidr_blocks = ["10.0.0.0/16"]
-  }
+  # Port 8080 revoked! (Sev-1 Outage Simulation)
 
   ingress {
     description = "HTTPS health checks"
