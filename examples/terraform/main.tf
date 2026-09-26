@@ -41,19 +41,13 @@ resource "aws_subnet" "production_subnet_a" {
 }
 
 # 2. Security Group Protecting Live Order Processing Microservice
+# DANGEROUS PR MUTATION: Port 8080 removed by developer while live ECS tasks are running!
 resource "aws_security_group" "order_service_sg" {
   name        = "order-service-sg"
   description = "Security group for Order Processing Microservice"
   vpc_id      = aws_vpc.production_vpc.id
 
-  # Inbound traffic for consumer microservice
-  ingress {
-    description = "Inbound API traffic"
-    from_port   = 8080
-    to_port     = 8080
-    protocol    = "tcp"
-    cidr_blocks = ["10.0.0.0/16"]
-  }
+  # Port 8080 removed!
 
   ingress {
     description = "HTTPS health checks"
@@ -72,9 +66,10 @@ resource "aws_security_group" "order_service_sg" {
 }
 
 # 3. Compute Instance for Async Worker
+# FINOPS WASTE MUTATION: Upsized to t3.xlarge despite idle workload (P99 CPU = 12.4%)
 resource "aws_instance" "worker_node" {
   ami           = "ami-0c55b159cbfafe1f0"
-  instance_type = "t3.medium"
+  instance_type = "t3.xlarge" # Upscaled from t3.medium
   subnet_id     = aws_subnet.production_subnet_a.id
 
   tags = {
