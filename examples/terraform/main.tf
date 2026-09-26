@@ -41,13 +41,19 @@ resource "aws_subnet" "production_subnet_a" {
 }
 
 # 2. Security Group Protecting Live Order Processing Microservice
-# PULL REQUEST MUTATION: Inbound port 8080 was removed here by developer!
 resource "aws_security_group" "order_service_sg" {
   name        = "order-service-sg"
   description = "Security group for Order Processing Microservice"
   vpc_id      = aws_vpc.production_vpc.id
 
-  # Port 8080 ingress block removed! (Causes immediate network outage on active containers)
+  # Inbound traffic for consumer microservice
+  ingress {
+    description = "Inbound API traffic"
+    from_port   = 8080
+    to_port     = 8080
+    protocol    = "tcp"
+    cidr_blocks = ["10.0.0.0/16"]
+  }
 
   ingress {
     description = "HTTPS health checks"
@@ -66,10 +72,9 @@ resource "aws_security_group" "order_service_sg" {
 }
 
 # 3. Compute Instance for Async Worker
-# PULL REQUEST MUTATION: Scaled up to t3.xlarge despite idle CPU
 resource "aws_instance" "worker_node" {
   ami           = "ami-0c55b159cbfafe1f0"
-  instance_type = "t3.xlarge" # Upscaled from t3.medium
+  instance_type = "t3.medium"
   subnet_id     = aws_subnet.production_subnet_a.id
 
   tags = {
