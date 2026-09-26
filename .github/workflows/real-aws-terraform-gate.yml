@@ -8,9 +8,6 @@ on:
       - '**/*.tf'
   push:
     branches: [ main ]
-    paths:
-      - 'terraform/**'
-      - '**/*.tf'
   workflow_dispatch:
     inputs:
       auto_apply:
