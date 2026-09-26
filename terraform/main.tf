@@ -19,7 +19,7 @@ provider "aws" {
   region = "us-east-1"
 }
 
-# 1. Production VPC & Subnet
+# 1. Production VPC & Subnets (Multi-AZ)
 resource "aws_vpc" "production_vpc" {
   cidr_block           = "10.0.0.0/16"
   enable_dns_hostnames = true
@@ -40,13 +40,22 @@ resource "aws_subnet" "production_subnet_a" {
   }
 }
 
-# 2. Security Group for Order Processing Microservice
+resource "aws_subnet" "production_subnet_b" {
+  vpc_id            = aws_vpc.production_vpc.id
+  cidr_block        = "10.0.2.0/24"
+  availability_zone = "us-east-1b"
+  tags = {
+    Name        = "production-subnet-b"
+    Environment = "production"
+  }
+}
+
+# 2. Security Group for Order Processing Microservice (Maintained)
 resource "aws_security_group" "order_service_sg" {
   name        = "order-service-sg"
   description = "Security group for Order Processing Microservice"
   vpc_id      = aws_vpc.production_vpc.id
 
-  # Inbound port for order processing API service
   ingress {
     description = "Order processing REST API"
     from_port   = 8080
@@ -73,6 +82,42 @@ resource "aws_security_group" "order_service_sg" {
 
   tags = {
     Name        = "order-service-sg"
+    Environment = "production"
+  }
+}
+
+# 3. Security Group for Analytics & Telemetry Service (New Microservice)
+resource "aws_security_group" "analytics_service_sg" {
+  name        = "analytics-service-sg"
+  description = "Security group for Analytics and Telemetry Microservice"
+  vpc_id      = aws_vpc.production_vpc.id
+
+  ingress {
+    description = "Analytics ingestion endpoint"
+    from_port   = 9090
+    to_port     = 9090
+    protocol    = "tcp"
+    cidr_blocks = ["10.0.0.0/16"]
+  }
+
+  ingress {
+    description = "HTTPS telemetry"
+    from_port   = 443
+    to_port     = 443
+    protocol    = "tcp"
+    cidr_blocks = ["10.0.0.0/16"]
+  }
+
+  egress {
+    description = "All outbound traffic"
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = {
+    Name        = "analytics-service-sg"
     Environment = "production"
   }
 }
