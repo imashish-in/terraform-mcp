@@ -134,3 +134,4 @@ resource "aws_instance" "order_worker" {
     Environment = "production"
   }
 }
+# FinOps Audit Trigger
