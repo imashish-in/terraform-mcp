@@ -1,0 +1,20 @@
+{
+  "mcpServers": {
+    "aws-live-topology-inspector": {
+      "command": "wsl.exe",
+      "args": [
+        "-e",
+        "/home/ashish/.venv_tf_mcp/bin/terraform-mcp",
+        "serve-topology"
+      ]
+    },
+    "aws-finops-cost-inspector": {
+      "command": "wsl.exe",
+      "args": [
+        "-e",
+        "/home/ashish/.venv_tf_mcp/bin/terraform-mcp",
+        "serve-finops"
+      ]
+    }
+  }
+}
