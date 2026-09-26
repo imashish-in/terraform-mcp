@@ -1,0 +1,24 @@
+{
+  "format_version": "1.2",
+  "terraform_version": "1.9.5",
+  "resource_changes": [
+    {
+      "address": "aws_route.cross_az_transit",
+      "mode": "managed",
+      "type": "aws_route",
+      "name": "cross_az_transit",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "change": {
+        "actions": ["create"],
+        "before": null,
+        "after": {
+          "id": "r-rtb-0a1b2c3d4e5f-10.200.0.0/16",
+          "route_table_id": "rtb-0a1b2c3d4e5f67890",
+          "destination_cidr_block": "10.200.0.0/16",
+          "transit_gateway_id": "tgw-0123456789abcdef0",
+          "vpc_endpoint_id": null
+        }
+      }
+    }
+  ]
+}
