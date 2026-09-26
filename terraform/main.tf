@@ -121,3 +121,16 @@ resource "aws_security_group" "analytics_service_sg" {
     Environment = "production"
   }
 }
+
+# 4. Compute Worker Instance (FinOps Waste Mutation)
+# Upscaled to t3.xlarge from baseline t3.medium despite idle P99 CPU (12.4%)
+resource "aws_instance" "order_worker" {
+  ami           = "ami-0c55b159cbfafe1f0"
+  instance_type = "t3.xlarge"
+  subnet_id     = aws_subnet.production_subnet_a.id
+
+  tags = {
+    Name        = "i-order-worker-01"
+    Environment = "production"
+  }
+}
