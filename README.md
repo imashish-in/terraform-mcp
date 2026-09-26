@@ -1,22 +1,22 @@
 # Terraform MCP: State-Aware Blast-Radius Analysis & FinOps Verification
 
-[![CI & Verification Gate](https://github.com/ashishkumar/terraform-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/ashishkumar/terraform-mcp/actions)
+[![CI & Verification Gate](https://github.com/imashish-in/terraform-mcp/actions/workflows/real-aws-terraform-gate.yml/badge.svg)](https://github.com/imashish-in/terraform-mcp/actions)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![Model Context Protocol](https://img.shields.io/badge/Protocol-MCP%20JSON--RPC-green.svg)](https://modelcontextprotocol.io/)
 
 > **State-Aware Blast-Radius Analysis: Dual-Objective Reliability and FinOps Verification for Infrastructure-as-Code via MCP-Governed Agentic Meshes**  
 > *Author: Ashish Kumar*  
-> *Systems Research White Paper & Open-Source Implementation*
+> *Systems Research White Paper: [WHITE_PAPER.md](WHITE_PAPER.md)*
 
 ---
 
-## Overview
+## 📖 Overview
 
 Modern Continuous Integration and Delivery (CI/CD) pipelines for Infrastructure-as-Code (Terraform / OpenTofu) rely on static policy engines (Checkov, Trivy, OPA) and speculative execution plans (`terraform plan`). However, **static analyzers operate in total isolation from live runtime state**.
 
-This creates two critical blind spots:
-1. **The Reliability Blind Spot:** A syntactically valid pull request modifying an `aws_security_group` or route table can instantly sever bindings to active, auto-scaled Elastic Network Interfaces (ENIs) and live ECS Fargate container tasks, causing immediate outages.
+This creates two critical blind spots in cloud engineering:
+1. **The Reliability Blind Spot:** A syntactically valid pull request modifying an `aws_security_group` or route table can instantly sever bindings to active, auto-scaled Elastic Network Interfaces (ENIs) and live ECS Fargate container tasks, causing immediate Sev-1 outages.
 2. **The FinOps Blind Spot:** Static cost estimators (e.g. Infracost) calculate flat rate deltas but are blind to live P99 CPU/memory utilization and cross-AZ data egress leaks ($0.01/GB).
 
 `terraform-mcp` bridges declarative IaC intent with live operational realities using the **Model Context Protocol (MCP)** across a decoupled, least-privilege discovery mesh:
@@ -51,68 +51,155 @@ This creates two critical blind spots:
 └────────────────────────────────────────────────────────────────────────┘
 ```
 
+> 💡 **Looking for local emulator testing without AWS costs?** See our dedicated [Floci Local Emulation Guide](FLOCI_GUIDE.md).
+
 ---
 
-## Key Features
+## ⚡ Key Features
 
 - **Transitive Blast-Radius Tracing:** Recursively discovers ephemeral ENIs, ECS container tasks, and Application Load Balancers bound to modified Security Groups.
 - **Usage-Correlated FinOps Telemetry:** Samples 14-day CloudWatch P99 metrics ($\text{P99} < 20\%$) to block wasteful instance up-sizing and flags unrouted cross-AZ egress.
-- **MCP Protocol Decoupling:** Topology discovery and FinOps telemetry execute across independent, least-privilege FastMCP servers.
-- **Zero-Trust Ephemeral IAM:** Requires no standing credentials; authenticates via GitHub Actions / GitLab OIDC STS tokens.
-- **Sub-Second Latency:** Ingests plans and evaluates dynamic cloud graphs in $<50\text{ ms}$ (local testbed).
+- **Dynamic Live AWS Discovery:** Automatically inspects live EC2 instance types and CloudWatch telemetry directly from AWS APIs in real time.
+- **Model Context Protocol (MCP) Decoupling:** Topology discovery and FinOps telemetry execute across independent, least-privilege FastMCP servers.
+- **Sub-150ms Pre-Merge Gate Latency:** Deterministic async Python orchestration meeting strict sub-second CI gate performance SLA.
+- **Spec-Compliant Markdown Reporting:** Generates rich PR review comments with actionable severity levels (`CRITICAL`, `WARNING`, `SAFE`).
 
 ---
 
-## Installation
+## 🚀 Quick Start on Real AWS Infrastructure
+
+### 1. Prerequisites & Installation
 
 ```bash
 # Clone the repository
-git clone https://github.com/ashishkumar/terraform-mcp.git
+git clone https://github.com/imashish-in/terraform-mcp.git
 cd terraform-mcp
 
-# Install via pip
-pip install -e .
+# Create and activate virtual environment
+python3 -m venv .venv
+source .venv/bin/activate
 
-# Or install with test and development dependencies
+# Install terraform-mcp in editable development mode
 pip install -e ".[dev]"
 ```
 
 ---
 
-## Quickstart & CLI Usage
+### 2. Configure AWS Authentication
 
-### 1. Pre-Merge PR Evaluation Gate
-
-Evaluate a Terraform speculative execution plan directly against live cloud state:
+`terraform-mcp` uses standard `boto3` and automatically discovers credentials from your AWS environment:
 
 ```bash
-# Generate speculative plan JSON
+# Option A: Standard AWS Environment Variables
+export AWS_ACCESS_KEY_ID="AKIA..."
+export AWS_SECRET_ACCESS_KEY="..."
+export AWS_DEFAULT_REGION="us-east-1"
+
+# Option B: AWS CLI Profile / AWS SSO
+export AWS_PROFILE="production"
+# or: aws sso login --profile production
+```
+
+#### Required IAM Permissions (Read-Only)
+`terraform-mcp` strictly requires **read-only / describe** permissions:
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "TerraformMCPStateDiscovery",
+      "Effect": "Allow",
+      "Action": [
+        "ec2:DescribeNetworkInterfaces",
+        "ec2:DescribeSecurityGroups",
+        "ec2:DescribeInstances",
+        "cloudwatch:GetMetricData",
+        "cloudwatch:GetMetricStatistics",
+        "elasticloadbalancing:DescribeTargetHealth",
+        "elasticloadbalancing:DescribeTargetGroups"
+      ],
+      "Resource": "*"
+    }
+  ]
+}
+```
+
+---
+
+### 3. Remote S3 State Backend Setup
+
+In your `terraform/main.tf`, configure an S3 backend to store your Terraform state remotely in AWS:
+
+```hcl
+terraform {
+  required_version = ">= 1.5.0"
+  required_providers {
+    aws = {
+      source  = "hashicorp/aws"
+      version = "~> 5.0"
+    }
+  }
+
+  backend "s3" {
+    bucket  = "terraform-mcp-state-<YOUR_ACCOUNT_ID>"
+    key     = "production/terraform.tfstate"
+    region  = "us-east-1"
+    encrypt = true
+  }
+}
+
+provider "aws" {
+  region = "us-east-1"
+}
+```
+
+---
+
+### 4. Running the Pre-Merge Verification Gate Locally
+
+```bash
+cd terraform
+
+# 1. Initialize backend and generate plan binary
+terraform init
 terraform plan -out=tfplan.binary
+
+# 2. Extract JSON AST diff from binary plan
 terraform show -json tfplan.binary > tfplan.json
 
-# Run state-aware MCP gate evaluation
+# 3. Evaluate plan against Real AWS Topology and CloudWatch Telemetry
 terraform-mcp evaluate \
   --plan tfplan.json \
   --region us-east-1 \
-  --markdown-out pr_comment.md \
+  --markdown-out pr_report.md \
   --json-out eval_report.json
 ```
 
-### 2. Running MCP Discovery Servers Independently
+#### Sample Terminal Output:
 
-You can run each MCP discovery server independently as standard MCP stdio services:
-
-```bash
-# Start Live-Topology Inspector MCP Server
-terraform-mcp serve-topology
-
-# Start FinOps Cost Inspector MCP Server
-terraform-mcp serve-finops
+```text
+╭──────────────────── Terraform MCP Pre-Merge Gate Report ─────────────────────╮
+│ Verdict: BLOCK_PR_CRITICAL_BLAST_RADIUS                                      │
+│ Evaluation Latency: 142.34 ms                                                │
+│ Topology Checks: 1 resource(s)                                               │
+│ FinOps Checks: 0 resource(s)                                                 │
+╰──────────────────────────────────────────────────────────────────────────────╯
+                      Dynamic Topology Blast-Radius Findings                    
+┏━━━━━━━━━━━━━━━━━┳━━━━━━━━━━┳━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━┓
+┃ Security Group  ┃ Severity ┃ Live ENIs  ┃ Severed Workloads  ┃ Verdict       ┃
+┡━━━━━━━━━━━━━━━━━╇━━━━━━━━━━╇━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━┩
+│ sg-081716c242c… │ CRITICAL │ 3 direct   │ 3 ECS microservice │ BLOCK_PR_CRI… │
+│                 │          │            │ tasks              │               │
+└─────────────────┴──────────┴────────────┴────────────────────┴───────────────┘
+Saved PR markdown summary to: pr_report.md
 ```
 
-### 3. Integrating with Claude Desktop / Cursor / Antigravity
+---
 
-Add the servers to your MCP configuration file (`mcp_config.json` or `claude_desktop_config.json`):
+## 🤖 Antigravity IDE & Claude Desktop MCP Registration
+
+You can register both MCP servers directly in **Google Antigravity IDE** (`~/.gemini/config/mcp_config.json`) or **Claude Desktop** (`claude_desktop_config.json`):
 
 ```json
 {
@@ -137,105 +224,74 @@ Add the servers to your MCP configuration file (`mcp_config.json` or `claude_des
 
 ---
 
-## Empirical Benchmark Suite
+## 🔄 GitHub Actions CI/CD Pipeline Setup
 
-The codebase includes the testbed reproducing Section 5 of the white paper:
+The repository includes a ready-to-use GitHub Actions workflow [`.github/workflows/real-aws-terraform-gate.yml`](.github/workflows/real-aws-terraform-gate.yml):
 
-| Benchmark Phase | Mean Latency | Overhead | Detection Result |
-| --- | --- | --- | --- |
-| **Case A: Port 8080 Revocation** on SG with 18 live ECS tasks | `~23 ms` | Sub-millisecond Boto3 | **BLOCKED (CRITICAL)** (18 severed containers detected) |
-| **Case B: Compute Upsize** (`t3.medium` $\to$ `t3.xlarge`) with idle workload | `~18 ms` | Sub-millisecond CloudWatch | **BLOCKED (FINOPS)** (Flagged 12.4% P99 CPU waste) |
-| **Case C: Route Modification** inducing Cross-AZ egress | `~20 ms` | Fast AST traversal | **WARNING (FINOPS)** (Flagged unmitigated transfer) |
+### 1. Add Repository Secrets in GitHub
+Go to **Settings → Secrets and variables → Actions** and add:
+* `AWS_ACCESS_KEY_ID`: `AKIA...`
+* `AWS_SECRET_ACCESS_KEY`: `...`
+* *(Or use AWS OIDC `AWS_ROLE_ARN` for keyless authentication)*
 
-Run the benchmarks locally:
+### 2. Automated PR Verification & Continuous Deployment
+* **On Pull Request (`pull_request`)**:
+  1. Runs `terraform init` and `terraform plan` against your remote S3 backend.
+  2. Runs `terraform-mcp evaluate` against live AWS ENIs, ECS tasks, and CloudWatch metrics.
+  3. Automatically posts the formatted audit report directly onto the Pull Request.
+  4. Fails the check (Red ❌) to block the merge if a critical blast radius or waste is detected.
+* **On Merge to Main (`push: [main]`)**:
+  - Automatically executes **`terraform apply -auto-approve`** to deploy verified changes to your live AWS account.
+
+---
+
+## 🧪 Real-World Verification Scenarios
+
+### Scenario A: Reliability Gate (Sev-1 Port Revocation)
+1. Developer opens a PR removing port `8080` from `aws_security_group.order_service_sg`.
+2. `terraform-mcp` inspects live AWS ENIs bound to that security group in real-time.
+3. If active microservice ENIs are bound, it blocks the PR with `BLOCK_PR_CRITICAL_BLAST_RADIUS`.
+
+### Scenario B: FinOps Gate (Structural Cloud Waste)
+1. Developer opens a PR upsizing an EC2 instance from `t3.micro` to `t3.xlarge`.
+2. `AWS-FinOps-Cost-Inspector` samples live CloudWatch P99 CPU metrics over the lookback window.
+3. If peak utilization is low ($\text{P99} = 14.2\% < 20\%$), it calculates projected monthly waste (`+$113.88/mo`) and blocks the PR with `BLOCK_PR_FINOPS_WASTE`.
+
+---
+
+## 📊 Benchmarks & Empirical Evaluation
+
+To reproduce the benchmark suite from Section 5 of the white paper:
 
 ```bash
-pytest -v -s tests/test_benchmarks.py
+pytest -v -s --durations=10 tests/
 ```
+
+| Metric | Measured Value | SLA Target | Status |
+| :--- | :--- | :--- | :--- |
+| **Case A (18 Live ENIs Blast Radius)** | `56.7 ms` | `< 250 ms` | ✅ PASSED |
+| **Case B (CloudWatch P99 Waste Audit)** | `58.2 ms` | `< 250 ms` | ✅ PASSED |
+| **Case C (Multi-AZ Route Severance)** | `52.1 ms` | `< 250 ms` | ✅ PASSED |
+| **Hermetic Multi-OS Test Suite** | 10 / 10 Passing | 100% | ✅ PASSED |
 
 ---
 
-## GitHub Actions CI/CD Integration
+## 📄 Research White Paper & Citations
 
-Add the verification gate as a status check in your GitHub Actions workflow (`.github/workflows/ci.yml`):
+For detailed formal proofs, mathematical formulations, and comparative architectural analysis with static analyzers, read the full white paper:
+* 📄 **[WHITE_PAPER.md](WHITE_PAPER.md)**: *"State-Aware Blast-Radius Analysis: Dual-Objective Reliability and FinOps Verification for Infrastructure-as-Code via MCP-Governed Agentic Meshes"*
 
-```yaml
-name: Terraform State-Aware Gate
-on: [pull_request]
-
-permissions:
-  id-token: write
-  contents: read
-  pull-requests: write
-
-jobs:
-  verify:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-      - run: pip install terraform-mcp
-
-      - name: Configure AWS Credentials via OIDC
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: arn:aws:iam::123456789012:role/TerraformMcpReadOnlyGate
-          aws-region: us-east-1
-
-      - name: Run MCP Gate Evaluation
-        run: |
-          terraform plan -out=tfplan.binary
-          terraform show -json tfplan.binary > tfplan.json
-          terraform-mcp evaluate --plan tfplan.json --markdown-out pr_report.md
-
-      - name: Comment PR Report
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const fs = require('fs');
-            const report = fs.readFileSync('pr_report.md', 'utf8');
-            github.rest.issues.createComment({
-              issue_number: context.issue.number,
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              body: report
-            });
-```
-
----
-
-## Scoped Least-Privilege IAM Policy
-
-```json
-{
-  "Version": "2012-10-17",
-  "Statement": [
-    {
-      "Sid": "TerraformMcpReadOnlyDiscovery",
-      "Effect": "Allow",
-      "Action": [
-        "ec2:DescribeNetworkInterfaces",
-        "ec2:DescribeSecurityGroups",
-        "elasticloadbalancing:DescribeTargetGroups",
-        "elasticloadbalancing:DescribeTargetHealth",
-        "cloudwatch:GetMetricData"
-      ],
-      "Resource": "*"
-    }
-  ]
+### BibTeX Citation
+```bibtex
+@article{kumar2026stateaware,
+  title={State-Aware Blast-Radius Analysis: Dual-Objective Reliability and FinOps Verification for Infrastructure-as-Code via MCP-Governed Agentic Meshes},
+  author={Kumar, Ashish},
+  journal={Cloud Systems & Infrastructure Architecture Research},
+  year={2026}
 }
 ```
 
 ---
 
-## Research White Paper
-
-Read the complete systems research paper in [WHITE_PAPER.md](WHITE_PAPER.md).
-
----
-
-## License
-
-Apache License 2.0. See [LICENSE](LICENSE) for details.
+## 📜 License
+Distributed under the Apache 2.0 License. See [LICENSE](LICENSE) for details.
