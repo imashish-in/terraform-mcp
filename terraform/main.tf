@@ -122,10 +122,26 @@ resource "aws_security_group" "analytics_service_sg" {
   }
 }
 
-# 4. Compute Worker Instance (FinOps Waste Mutation)
+# 4. Dynamic AMI Data Source (Always fetches the latest validated Amazon Linux 2023 AMI)
+data "aws_ami" "amazon_linux_2023" {
+  most_recent = true
+  owners      = ["amazon"]
+
+  filter {
+    name   = "name"
+    values = ["al2023-ami-2023.*-x86_64"]
+  }
+
+  filter {
+    name   = "virtualization-type"
+    values = ["hvm"]
+  }
+}
+
+# 5. Compute Worker Instance (FinOps Waste Mutation)
 # Upscaled to t3.xlarge from baseline t3.medium despite idle P99 CPU (12.4%)
 resource "aws_instance" "order_worker" {
-  ami           = "ami-0c55b159cbfafe1f0"
+  ami           = data.aws_ami.amazon_linux_2023.id
   instance_type = "t3.xlarge"
   subnet_id     = aws_subnet.production_subnet_a.id
 
@@ -134,4 +150,3 @@ resource "aws_instance" "order_worker" {
     Environment = "production"
   }
 }
-# FinOps Audit Trigger
