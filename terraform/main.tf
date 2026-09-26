@@ -174,10 +174,10 @@ data "aws_ami" "amazon_linux_2023" {
   }
 }
 
-# 6. Baseline EC2 Worker Instance (Small initial size)
+# 6. Compute Worker Instance (Upsized to t3.xlarge)
 resource "aws_instance" "order_worker" {
   ami           = data.aws_ami.amazon_linux_2023.id
-  instance_type = "t3.micro"
+  instance_type = "t3.xlarge"
   subnet_id     = aws_subnet.production_subnet_a.id
 
   tags = {
