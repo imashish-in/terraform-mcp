@@ -51,6 +51,16 @@ def get_cloudwatch_client(region_name: str = "us-east-1", endpoint_url: Optional
     )
 
 
+def get_ec2_client(region_name: str = "us-east-1", endpoint_url: Optional[str] = None):
+    endpoint = endpoint_url or os.getenv("AWS_ENDPOINT_URL")
+    return boto3.client(
+        "ec2",
+        region_name=region_name,
+        endpoint_url=endpoint,
+        config=Config(retries={"max_attempts": 2, "mode": "standard"})
+    )
+
+
 @server.tool(name="inspect_resource_cost_efficiency")
 def inspect_resource_cost_efficiency(
     resource_id: str,
@@ -73,6 +83,23 @@ def inspect_resource_cost_efficiency(
         region_name: AWS region name
         endpoint_url: Optional override endpoint URL for local emulation
     """
+    # 1. Dynamically discover live current instance type from live AWS EC2 if not provided in plan
+    if not current_type and resource_type in ("ec2_or_ecs", "aws_instance", "aws_launch_template"):
+        try:
+            ec2_client = get_ec2_client(region_name, endpoint_url)
+            if resource_id.startswith("i-") and len(resource_id) > 10:
+                desc = ec2_client.describe_instances(InstanceIds=[resource_id])
+                for r in desc.get("Reservations", []):
+                    for inst in r.get("Instances", []):
+                        current_type = inst.get("InstanceType")
+            if not current_type:
+                desc = ec2_client.describe_instances(Filters=[{"Name": "tag:Name", "Values": [resource_id]}])
+                for r in desc.get("Reservations", []):
+                    for inst in r.get("Instances", []):
+                        current_type = inst.get("InstanceType")
+        except Exception:
+            pass
+
     cw_client = get_cloudwatch_client(region_name, endpoint_url)
     now_utc = datetime.now(timezone.utc)
     end_time = now_utc + timedelta(hours=1)
