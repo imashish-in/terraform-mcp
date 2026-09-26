@@ -71,3 +71,9 @@ terraform.rc
 # OS
 .DS_Store
 Thumbs.db
+
+# Local simulation artifacts
+*.json.out
+gate_result.json
+live_plan_*.json
+pr_*.md
